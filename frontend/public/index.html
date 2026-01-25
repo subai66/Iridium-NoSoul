@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NotesOfSoul Packet Sniffer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Consolas', 'Monaco', monospace;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+        }
+        .header {
+            background: #16213e;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #0f3460;
+        }
+        .header h1 {
+            color: #e94560;
+            font-size: 1.5em;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .btn-start {
+            background: #4ecca3;
+            color: #1a1a2e;
+        }
+        .btn-stop {
+            background: #e94560;
+            color: white;
+        }
+        .btn-clear {
+            background: #0f3460;
+            color: white;
+        }
+        .btn:hover {
+            opacity: 0.8;
+            transform: translateY(-1px);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .main {
+            display: flex;
+            height: calc(100vh - 70px);
+        }
+        .packet-list {
+            width: 50%;
+            border-right: 1px solid #0f3460;
+            overflow-y: auto;
+        }
+        .packet-detail {
+            width: 50%;
+            padding: 15px;
+            overflow-y: auto;
+        }
+        .packet-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #0f3460;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .packet-item:hover {
+            background: #16213e;
+        }
+        .packet-item.selected {
+            background: #0f3460;
+        }
+        .packet-item .time {
+            color: #888;
+            font-size: 12px;
+        }
+        .packet-item .direction {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-right: 8px;
+        }
+        .packet-item .direction.c2s {
+            background: #4ecca3;
+            color: #1a1a2e;
+        }
+        .packet-item .direction.s2c {
+            background: #e94560;
+            color: white;
+        }
+        .packet-item .msg-id {
+            color: #f9ed69;
+            font-weight: bold;
+        }
+        .packet-item .msg-name {
+            color: #4ecca3;
+            margin-left: 10px;
+        }
+        .detail-section {
+            margin-bottom: 20px;
+        }
+        .detail-section h3 {
+            color: #e94560;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #0f3460;
+        }
+        .detail-content {
+            background: #16213e;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .json-view {
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .hex-view {
+            font-size: 12px;
+            line-height: 1.8;
+            color: #888;
+        }
+        .filter-bar {
+            padding: 10px 15px;
+            background: #16213e;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .filter-bar input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #0f3460;
+            border-radius: 4px;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 14px;
+        }
+        .filter-bar input:focus {
+            outline: none;
+            border-color: #4ecca3;
+        }
+        .status-bar {
+            padding: 5px 15px;
+            background: #0f3460;
+            font-size: 12px;
+            color: #888;
+            display: flex;
+            justify-content: space-between;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-indicator.active {
+            background: #4ecca3;
+            animation: pulse 1s infinite;
+        }
+        .status-indicator.inactive {
+            background: #e94560;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .upload-area {
+            padding: 10px 15px;
+            background: #16213e;
+            border-bottom: 1px solid #0f3460;
+        }
+        .upload-area input[type="file"] {
+            display: none;
+        }
+        .upload-label {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #0f3460;
+            color: #eee;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .upload-label:hover {
+            background: #1a3a6e;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔍 NotesOfSoul Packet Sniffer</h1>
+        <div class="controls">
+            <button class="btn btn-start" id="btnStart">开始捕获</button>
+            <button class="btn btn-stop" id="btnStop" disabled>停止捕获</button>
+            <button class="btn btn-clear" id="btnClear">清空</button>
+        </div>
+    </div>
+
+    <div class="upload-area">
+        <label class="upload-label">
+            📁 上传 PCAP 文件
+            <input type="file" id="pcapUpload" accept=".pcap,.pcapng">
+        </label>
+        <span id="uploadStatus"></span>
+    </div>
+
+    <div class="filter-bar">
+        <input type="text" id="filterInput" placeholder="过滤: 输入 MsgID 或消息名称...">
+    </div>
+
+    <div class="status-bar">
+        <span>
+            <span class="status-indicator inactive" id="statusIndicator"></span>
+            <span id="statusText">未连接</span>
+        </span>
+        <span>数据包: <span id="packetCount">0</span></span>
+    </div>
+
+    <div class="main">
+        <div class="packet-list" id="packetList"></div>
+        <div class="packet-detail" id="packetDetail">
+            <div style="color: #888; text-align: center; margin-top: 50px;">
+                选择一个数据包查看详情
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let packets = [];
+        let selectedIndex = -1;
+        let eventSource = null;
+        let isCapturing = false;
+
+        // DOM 元素
+        const btnStart = document.getElementById('btnStart');
+        const btnStop = document.getElementById('btnStop');
+        const btnClear = document.getElementById('btnClear');
+        const packetList = document.getElementById('packetList');
+        const packetDetail = document.getElementById('packetDetail');
+        const filterInput = document.getElementById('filterInput');
+        const packetCount = document.getElementById('packetCount');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const pcapUpload = document.getElementById('pcapUpload');
+        const uploadStatus = document.getElementById('uploadStatus');
+
+        // 开始捕获
+        btnStart.addEventListener('click', async () => {
+            try {
+                const resp = await fetch('/api/start');
+                if (resp.ok) {
+                    isCapturing = true;
+                    updateStatus(true);
+                    connectEventStream();
+                    btnStart.disabled = true;
+                    btnStop.disabled = false;
+                }
+            } catch (e) {
+                console.error('Start failed:', e);
+            }
+        });
+
+        // 停止捕获
+        btnStop.addEventListener('click', async () => {
+            try {
+                const resp = await fetch('/api/stop');
+                if (resp.ok) {
+                    isCapturing = false;
+                    updateStatus(false);
+                    if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                    btnStart.disabled = false;
+                    btnStop.disabled = true;
+                }
+            } catch (e) {
+                console.error('Stop failed:', e);
+            }
+        });
+
+        // 清空
+        btnClear.addEventListener('click', async () => {
+            try {
+                await fetch('/api/clear');
+                packets = [];
+                selectedIndex = -1;
+                renderPacketList();
+                packetDetail.innerHTML = '<div style="color: #888; text-align: center; margin-top: 50px;">选择一个数据包查看详情</div>';
+            } catch (e) {
+                console.error('Clear failed:', e);
+            }
+        });
+
+        // 过滤
+        filterInput.addEventListener('input', () => {
+            renderPacketList();
+        });
+
+        // 上传 PCAP
+        pcapUpload.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            uploadStatus.textContent = '上传中...';
+
+            try {
+                const resp = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (resp.ok) {
+                    uploadStatus.textContent = '处理中...';
+                    // 等待处理完成后获取数据包
+                    setTimeout(loadPackets, 1000);
+                } else {
+                    uploadStatus.textContent = '上传失败';
+                }
+            } catch (e) {
+                uploadStatus.textContent = '上传错误';
+            }
+        });
+
+        // 连接事件流
+        function connectEventStream() {
+            eventSource = new EventSource('/api/stream');
+
+            eventSource.addEventListener('packet', (e) => {
+                const packet = JSON.parse(e.data);
+                packets.push(packet);
+                renderPacketList();
+            });
+
+            eventSource.onerror = () => {
+                console.error('EventSource error');
+                updateStatus(false);
+            };
+        }
+
+        // 加载数据包
+        async function loadPackets() {
+            try {
+                const resp = await fetch('/api/packets');
+                if (resp.ok) {
+                    packets = await resp.json();
+                    renderPacketList();
+                    uploadStatus.textContent = `已加载 ${packets.length} 个数据包`;
+                }
+            } catch (e) {
+                console.error('Load packets failed:', e);
+            }
+        }
+
+        // 更新状态
+        function updateStatus(active) {
+            statusIndicator.className = 'status-indicator ' + (active ? 'active' : 'inactive');
+            statusText.textContent = active ? '捕获中' : '未连接';
+        }
+
+        // 渲染数据包列表
+        function renderPacketList() {
+            const filter = filterInput.value.toLowerCase();
+            const filtered = packets.filter(p => {
+                if (!filter) return true;
+                return p.msgId.toString().includes(filter) ||
+                       (p.name && p.name.toLowerCase().includes(filter));
+            });
+
+            packetCount.textContent = filtered.length;
+
+            packetList.innerHTML = filtered.map((p, i) => `
+                <div class="packet-item ${i === selectedIndex ? 'selected' : ''}" data-index="${i}">
+                    <div>
+                        <span class="time">${p.time}</span>
+                        <span class="direction ${p.direction.toLowerCase()}">${p.direction}</span>
+                        <span class="msg-id">${p.msgId}</span>
+                        <span class="msg-name">${p.name || 'Unknown'}</span>
+                    </div>
+                </div>
+            `).join('');
+
+            // 绑定点击事件
+            packetList.querySelectorAll('.packet-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const index = parseInt(item.dataset.index);
+                    selectPacket(index);
+                });
+            });
+        }
+
+        // 选择数据包
+        function selectPacket(index) {
+            selectedIndex = index;
+            const packet = packets[index];
+
+            renderPacketList();
+
+            let dataHtml = '';
+            if (packet.data) {
+                dataHtml = `
+                    <div class="detail-section">
+                        <h3>📦 解析数据</h3>
+                        <div class="detail-content">
+                            <pre class="json-view">${JSON.stringify(packet.data, null, 2)}</pre>
+                        </div>
+                    </div>
+                `;
+            }
+
+            packetDetail.innerHTML = `
+                <div class="detail-section">
+                    <h3>📋 基本信息</h3>
+                    <div class="detail-content">
+                        <p><strong>时间:</strong> ${packet.time}</p>
+                        <p><strong>方向:</strong> ${packet.direction}</p>
+                        <p><strong>MsgID:</strong> ${packet.msgId}</p>
+                        <p><strong>名称:</strong> ${packet.name || 'Unknown'}</p>
+                    </div>
+                </div>
+                ${dataHtml}
+                <div class="detail-section">
+                    <h3>🔢 原始数据 (Hex)</h3>
+                    <div class="detail-content">
+                        <div class="hex-view">${formatHex(packet.rawHex)}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 格式化十六进制
+        function formatHex(hex) {
+            if (!hex) return '';
+            let result = '';
+            for (let i = 0; i < hex.length; i += 32) {
+                const line = hex.slice(i, i + 32);
+                const offset = (i / 2).toString(16).padStart(8, '0');
+                const bytes = line.match(/.{1,2}/g).join(' ');
+                result += `${offset}  ${bytes}\n`;
+            }
+            return result;
+        }
+
+        // 初始化
+        loadPackets();
+    </script>
+</body>
+</html>
