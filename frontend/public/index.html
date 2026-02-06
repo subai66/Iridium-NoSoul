@@ -126,6 +126,68 @@
             margin-bottom: 10px;
             padding-bottom: 5px;
             border-bottom: 1px solid #0f3460;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        .copy-btn, .download-btn {
+            background: #4ecca3;
+            color: #1a1a2e;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        .copy-btn:hover {
+            background: #45b393;
+            transform: translateY(-1px);
+        }
+        .download-btn {
+            background: #ff9f43;
+            color: white;
+        }
+        .download-btn:hover {
+            background: #ff8c1a;
+            transform: translateY(-1px);
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        .notification.success {
+            background: #4ecca3;
+            color: #1a1a2e;
+        }
+        .notification.error {
+            background: #e94560;
+        }
+        .notification.info {
+            background: #0f4c75;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
         .detail-content {
             background: #16213e;
@@ -388,33 +450,40 @@
         // 渲染数据包列表
         function renderPacketList() {
             const filter = filterInput.value.toLowerCase();
-            const filtered = packets.filter(p => {
-                if (!filter) return true;
-                return p.msgId.toString().includes(filter) ||
-                       p.cmdType.toString().includes(filter) ||
-                       p.paramType.toString().includes(filter) ||
-                       (p.name && p.name.toLowerCase().includes(filter));
-            });
+            const filteredWithIndex = packets
+                .map((p, originalIndex) => ({packet: p, originalIndex}))
+                .filter(item => {
+                    if (!filter) return true;
+                    const p = item.packet;
+                    return p.msgId.toString().includes(filter) ||
+                           p.cmdType.toString().includes(filter) ||
+                           p.paramType.toString().includes(filter) ||
+                           (p.name && p.name.toLowerCase().includes(filter));
+                });
 
-            packetCount.textContent = filtered.length;
+            packetCount.textContent = filteredWithIndex.length;
 
-            packetList.innerHTML = filtered.map((p, i) => `
-                <div class="packet-item ${i === selectedIndex ? 'selected' : ''}" data-index="${i}">
-                    <div>
-                        <span class="time">${p.time}</span>
-                        <span class="direction ${p.direction.toLowerCase()}">${p.direction}</span>
-                        <span class="msg-id">${p.msgId}</span>
-                        <span class="cmd-type">[Cmd=${p.cmdType}, Param=${p.paramType}]</span>
-                        <span class="msg-name">${p.name || 'Unknown'}</span>
+            packetList.innerHTML = filteredWithIndex.map((item, i) => {
+                const p = item.packet;
+                const isSelected = item.originalIndex === selectedIndex;
+                return `
+                    <div class="packet-item ${isSelected ? 'selected' : ''}" data-index="${item.originalIndex}">
+                        <div>
+                            <span class="time">${p.time}</span>
+                            <span class="direction ${p.direction.toLowerCase()}">${p.direction}</span>
+                            <span class="msg-id">${p.msgId}</span>
+                            <span class="cmd-type">[Cmd=${p.cmdType}, Param=${p.paramType}]</span>
+                            <span class="msg-name">${p.name || 'Unknown'}</span>
+                        </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
 
             // 绑定点击事件
             packetList.querySelectorAll('.packet-item').forEach(item => {
                 item.addEventListener('click', () => {
-                    const index = parseInt(item.dataset.index);
-                    selectPacket(index);
+                    const originalIndex = parseInt(item.dataset.index);
+                    selectPacket(originalIndex);
                 });
             });
         }
@@ -424,15 +493,29 @@
             selectedIndex = index;
             const packet = packets[index];
 
-            renderPacketList();
+            // 更新选中状态的显示
+            packetList.querySelectorAll('.packet-item').forEach(item => {
+                const itemIndex = parseInt(item.dataset.index);
+                if (itemIndex === selectedIndex) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
 
             let dataHtml = '';
             if (packet.data) {
+                const jsonData = JSON.stringify(packet.data, null, 2);
                 dataHtml = `
                     <div class="detail-section">
-                        <h3>📦 解析数据</h3>
+                        <h3>📦 解析数据
+                            <div class="action-buttons">
+                                <button class="copy-btn" onclick="copyJsonData('${btoa(jsonData).replace(/'/g, "\\'")}')">📋 复制</button>
+                                <button class="download-btn" onclick="downloadJsonData('${btoa(jsonData).replace(/'/g, "\\'")}', 'packet_${packet.msgId}_${packet.time.replace(/:/g, '-')}')">💾 下载</button>
+                            </div>
+                        </h3>
                         <div class="detail-content">
-                            <pre class="json-view">${JSON.stringify(packet.data, null, 2)}</pre>
+                            <pre class="json-view">${jsonData}</pre>
                         </div>
                     </div>
                 `;
@@ -471,6 +554,63 @@
                 result += `${offset}  ${bytes}\n`;
             }
             return result;
+        }
+
+        // 复制JSON数据到剪贴板
+        function copyJsonData(encodedData) {
+            try {
+                const jsonData = atob(encodedData);
+                navigator.clipboard.writeText(jsonData).then(() => {
+                    // 显示复制成功提示
+                    showNotification('JSON数据已复制到剪贴板！', 'success');
+                }).catch(err => {
+                    console.error('复制失败:', err);
+                    showNotification('复制失败，请手动选择复制', 'error');
+                });
+            } catch (err) {
+                console.error('解码数据失败:', err);
+                showNotification('复制失败', 'error');
+            }
+        }
+
+        // 下载JSON数据为文件
+        function downloadJsonData(encodedData, filename) {
+            try {
+                const jsonData = atob(encodedData);
+                const blob = new Blob([jsonData], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${filename}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                showNotification('JSON文件下载成功！', 'success');
+            } catch (err) {
+                console.error('下载失败:', err);
+                showNotification('下载失败', 'error');
+            }
+        }
+
+        // 显示通知消息
+        function showNotification(message, type = 'info') {
+            // 创建通知元素
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+
+            // 添加到页面
+            document.body.appendChild(notification);
+
+            // 3秒后自动移除
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 3000);
         }
 
         // 初始化
