@@ -21,23 +21,22 @@ type Config struct {
 var config Config
 var packetFilter map[string]bool
 
+// 默认配置
+var defaultConfig = Config{
+	DeviceName:        "",
+	PacketFilter:      []string{},
+	AutoSavePcapFiles: false,
+	TargetPortMin:     20000,
+	TargetPortMax:     30000,
+}
+
 func main() {
 	listDevices := flag.Bool("l", false, "List all network devices")
 	ipAddress := flag.String("ip", "", "Select device by IP address")
 	flag.Parse()
 
 	// 加载配置
-	configData, err := os.ReadFile("./config.json")
-	if err != nil {
-		color.Red("Could not load ./config.json: %v", err)
-		os.Exit(1)
-	}
-
-	err = json.Unmarshal(configData, &config)
-	if err != nil {
-		color.Red("Could not parse ./config.json: %v", err)
-		os.Exit(1)
-	}
+	loadConfig()
 
 	// 初始化包过滤器
 	packetFilter = make(map[string]bool)
@@ -120,4 +119,45 @@ func findDeviceByIP(ip string) string {
 		}
 	}
 	return ""
+}
+
+// loadConfig 加载配置文件，如果不存在则创建默认配置
+func loadConfig() {
+	configPath := "./config.json"
+
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// 配置文件不存在，创建默认配置
+			color.Yellow("Config file not found, creating default config.json...")
+			config = defaultConfig
+			saveConfig(configPath)
+			return
+		}
+		color.Red("Could not load config.json: %v", err)
+		os.Exit(1)
+	}
+
+	err = json.Unmarshal(configData, &config)
+	if err != nil {
+		color.Red("Could not parse config.json: %v", err)
+		os.Exit(1)
+	}
+}
+
+// saveConfig 保存配置到文件
+func saveConfig(path string) {
+	data, err := json.MarshalIndent(config, "", "    ")
+	if err != nil {
+		color.Red("Could not serialize config: %v", err)
+		return
+	}
+
+	err = os.WriteFile(path, data, 0644)
+	if err != nil {
+		color.Red("Could not save config.json: %v", err)
+		return
+	}
+
+	color.Green("Created default config.json")
 }

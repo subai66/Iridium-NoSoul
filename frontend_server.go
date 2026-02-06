@@ -49,6 +49,8 @@ func notifyFrontend(pkt *Packet) {
 	data := map[string]interface{}{
 		"time":      pkt.Time.Format("15:04:05.000"),
 		"direction": pkt.Direction,
+		"cmdType":   pkt.CmdType,
+		"paramType": pkt.ParamType,
 		"msgId":     pkt.MsgID,
 		"name":      pkt.Name,
 		"data":      pkt.Data,
@@ -182,6 +184,8 @@ func handleGetPackets(c *gin.Context) {
 		result[i] = map[string]interface{}{
 			"time":      pkt.Time.Format("15:04:05.000"),
 			"direction": pkt.Direction,
+			"cmdType":   pkt.CmdType,
+			"paramType": pkt.ParamType,
 			"msgId":     pkt.MsgID,
 			"name":      pkt.Name,
 			"data":      pkt.Data,

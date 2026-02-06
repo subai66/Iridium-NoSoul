@@ -13,12 +13,14 @@ const (
 )
 
 // PacketData 表示解析后的数据包
+// 使用 CmdType + ParamType 二级路由
+// MsgID = CmdType * 1000 + ParamType（仅用于显示和映射查找）
 type PacketData struct {
-	MsgID     int
-	Cmd       byte
-	Sub       byte
-	ProtoData []byte
-	RawData   []byte
+	CmdType   int    // 一级命令类型
+	ParamType int    // 二级命令类型
+	MsgID     int    // 消息ID = CmdType * 1000 + ParamType
+	ProtoData []byte // Protobuf 数据
+	RawData   []byte // 原始数据包
 }
 
 // TCPStreamBuffer TCP 流缓冲区，用于处理粘包/拆包
@@ -91,15 +93,15 @@ func decodePacket(buffer []byte) (*PacketData, int, error) {
 	}
 
 	// 解析 Payload Header
-	// [8]   cmd (byte)
-	// [9]   sub (byte)
+	// [8]   cmdType (byte) - 一级命令类型
+	// [9]   paramType (byte) - 二级命令类型
 	// [10:14] proto_length (uint32, little-endian)
-	cmd := buffer[8]
-	sub := buffer[9]
+	cmdType := int(buffer[8])
+	paramType := int(buffer[9])
 	protoLen := binary.LittleEndian.Uint32(buffer[10:14])
 
-	// 计算 MsgID: cmd * 1000 + sub
-	msgID := int(cmd)*1000 + int(sub)
+	// 计算 MsgID: CmdType * 1000 + ParamType（用于显示和映射查找）
+	msgID := cmdType*1000 + paramType
 
 	// 提取 Proto 数据
 	var protoData []byte
@@ -113,9 +115,9 @@ func decodePacket(buffer []byte) (*PacketData, int, error) {
 	copy(rawData, buffer[:fullPacketLen])
 
 	packet := &PacketData{
+		CmdType:   cmdType,
+		ParamType: paramType,
 		MsgID:     msgID,
-		Cmd:       cmd,
-		Sub:       sub,
 		ProtoData: protoData,
 		RawData:   rawData,
 	}
@@ -124,9 +126,10 @@ func decodePacket(buffer []byte) (*PacketData, int, error) {
 }
 
 // EncodePacket 编码数据包
-func EncodePacket(msgID int, protoData []byte) []byte {
-	cmd := byte(msgID / 1000)
-	sub := byte(msgID % 1000)
+// 使用 CmdType + ParamType 二级路由
+func EncodePacket(cmdType, paramType int, protoData []byte) []byte {
+	cmd := byte(cmdType)
+	sub := byte(paramType)
 	protoLen := uint32(len(protoData))
 	payloadLen := uint32(PayloadHeaderSize) + protoLen
 
@@ -137,8 +140,8 @@ func EncodePacket(msgID int, protoData []byte) []byte {
 	binary.LittleEndian.PutUint32(packet[4:8], payloadLen) // payload_length
 
 	// Payload Header
-	packet[8] = cmd
-	packet[9] = sub
+	packet[8] = cmd  // CmdType
+	packet[9] = sub  // ParamType
 	binary.LittleEndian.PutUint32(packet[10:14], protoLen) // proto_length
 
 	// Proto Data
@@ -149,18 +152,24 @@ func EncodePacket(msgID int, protoData []byte) []byte {
 	return packet
 }
 
-// SplitMsgID 从 MsgID 获取 cmd 和 sub
-func SplitMsgID(msgID int) (cmd byte, sub byte) {
+// EncodePacketByMsgID 使用 MsgID 编码数据包（兼容旧接口）
+func EncodePacketByMsgID(msgID int, protoData []byte) []byte {
+	cmdType, paramType := SplitMsgID(msgID)
+	return EncodePacket(int(cmdType), int(paramType), protoData)
+}
+
+// SplitMsgID 从 MsgID 获取 CmdType 和 ParamType
+func SplitMsgID(msgID int) (cmdType byte, paramType byte) {
 	return byte(msgID / 1000), byte(msgID % 1000)
 }
 
-// CombineMsgID 从 cmd 和 sub 组合 MsgID
-func CombineMsgID(cmd, sub byte) int {
-	return int(cmd)*1000 + int(sub)
+// CombineMsgID 从 CmdType 和 ParamType 组合 MsgID
+func CombineMsgID(cmdType, paramType int) int {
+	return cmdType*1000 + paramType
 }
 
 // GetPacketInfo 获取数据包的可读描述
 func GetPacketInfo(packet *PacketData) string {
-	return fmt.Sprintf("[MsgID=%d (cmd=%d, sub=%d), proto_len=%d]",
-		packet.MsgID, packet.Cmd, packet.Sub, len(packet.ProtoData))
+	return fmt.Sprintf("[CmdType=%d, ParamType=%d, MsgID=%d, proto_len=%d]",
+		packet.CmdType, packet.ParamType, packet.MsgID, len(packet.ProtoData))
 }

@@ -1,5 +1,7 @@
 # NotesOfSoul TCP Packet Sniffer
 
+高中阶段逆向学习任务
+
 灵境奇谈 TCP 数据包捕获器，基于 [Iridium-Ww](https://github.com/WutheringWavesGame/Iridium-Ww) 修改。
 
 ## 协议格式

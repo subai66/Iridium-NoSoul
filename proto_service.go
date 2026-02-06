@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,16 +40,21 @@ func loadPacketIds() {
 		return
 	}
 
-	// packetIds.json 格式: {"MsgName": 123456, ...}
-	var idMap map[string]int
+	// packetIds.json 格式: {"102001": "MsgName", ...}
+	var idMap map[string]string
 	err = json.Unmarshal(data, &idMap)
 	if err != nil {
 		color.Yellow("Warning: Could not parse packetIds.json: %v", err)
 		return
 	}
 
-	// 反转映射: ID -> Name
-	for name, id := range idMap {
+	// 解析映射: ID (string) -> Name
+	for idStr, name := range idMap {
+		var id int
+		_, err := fmt.Sscanf(idStr, "%d", &id)
+		if err != nil {
+			continue
+		}
 		protoIdMap[id] = name
 	}
 
@@ -57,24 +63,37 @@ func loadPacketIds() {
 
 // loadProto 加载 proto 文件
 func loadProto() {
-	protoFile := "./data/NotesOfSoul.proto"
+	protoDir := "./data/proto"
 
-	// 检查文件是否存在
-	if _, err := os.Stat(protoFile); os.IsNotExist(err) {
-		color.Yellow("Warning: Proto file not found: %s", protoFile)
+	// 检查目录是否存在
+	if _, err := os.Stat(protoDir); os.IsNotExist(err) {
+		color.Yellow("Warning: Proto directory not found: %s", protoDir)
 		color.Yellow("Proto parsing will not be available.")
 		return
 	}
 
-	// 创建解析器
-	protoParser = &protoparse.Parser{
-		ImportPaths: []string{"./data"},
+	// 获取所有 .proto 文件
+	protoFiles, err := filepath.Glob(filepath.Join(protoDir, "*.proto"))
+	if err != nil || len(protoFiles) == 0 {
+		color.Yellow("Warning: No proto files found in %s", protoDir)
+		return
 	}
 
-	// 解析 proto 文件
-	fds, err := protoParser.ParseFiles(filepath.Base(protoFile))
+	// 提取文件名列表
+	var fileNames []string
+	for _, f := range protoFiles {
+		fileNames = append(fileNames, filepath.Base(f))
+	}
+
+	// 创建解析器
+	protoParser = &protoparse.Parser{
+		ImportPaths: []string{protoDir},
+	}
+
+	// 解析所有 proto 文件
+	fds, err := protoParser.ParseFiles(fileNames...)
 	if err != nil {
-		color.Yellow("Warning: Could not parse proto file: %v", err)
+		color.Yellow("Warning: Could not parse proto files: %v", err)
 		return
 	}
 
@@ -83,22 +102,25 @@ func loadProto() {
 		return
 	}
 
-	fd := fds[0]
-
 	// 建立消息名称到描述符的映射
 	msgMap := make(map[string]*desc.MessageDescriptor)
-	for _, msg := range fd.GetMessageTypes() {
-		msgMap[msg.GetName()] = msg
-		// 也添加带包名的版本
-		fullName := msg.GetFullyQualifiedName()
-		msgMap[fullName] = msg
+	for _, fd := range fds {
+		for _, msg := range fd.GetMessageTypes() {
+			msgMap[msg.GetName()] = msg
+			// 也添加带包名的版本
+			fullName := msg.GetFullyQualifiedName()
+			msgMap[fullName] = msg
+		}
 	}
 
 	// 将 ID 映射到消息描述符
+	mappedCount := 0
+	unmappedCount := 0
 	for id, name := range protoIdMap {
 		// 尝试不同的名称格式
 		if msgDesc, ok := msgMap[name]; ok {
 			protoMap[id] = msgDesc
+			mappedCount++
 		} else {
 			// 尝试去掉可能的前缀
 			simpleName := name
@@ -107,12 +129,24 @@ func loadProto() {
 			}
 			if msgDesc, ok := msgMap[simpleName]; ok {
 				protoMap[id] = msgDesc
+				mappedCount++
+			} else {
+				unmappedCount++
+				// 只打印前几个未映射的消息
+				if unmappedCount <= 5 {
+					color.Yellow("  Unmapped: %d -> %s", id, name)
+				}
 			}
 		}
 	}
 
-	color.Green("Loaded proto file with %d message types", len(fd.GetMessageTypes()))
-	color.Green("Mapped %d packet IDs to proto messages", len(protoMap))
+	// 统计总消息数
+	totalMsgTypes := 0
+	for _, fd := range fds {
+		totalMsgTypes += len(fd.GetMessageTypes())
+	}
+	color.Green("Loaded %d proto files with %d message types", len(fds), totalMsgTypes)
+	color.Green("Mapped %d packet IDs to proto messages (%d unmapped)", mappedCount, unmappedCount)
 }
 
 // GetProtoById 根据 ID 获取消息描述符

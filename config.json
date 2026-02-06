@@ -1,0 +1,7 @@
+{
+    "deviceName": "\\Device\\NPF_{B2F952AB-F7DA-4813-AEA7-C71019B89DF7}",
+    "packetFilter": [],
+    "autoSavePcapFiles": true,
+    "targetPortMin": 500,
+    "targetPortMax": 8000
+}

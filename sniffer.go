@@ -17,10 +17,13 @@ import (
 )
 
 // Packet 表示捕获的数据包
+// 使用 CmdType + ParamType 二级路由
 type Packet struct {
 	Time      time.Time
 	Direction string // "C2S" 或 "S2C"
-	MsgID     int
+	CmdType   int    // 一级命令类型
+	ParamType int    // 二级命令类型
+	MsgID     int    // 消息ID = CmdType * 1000 + ParamType
 	Name      string
 	Data      interface{}
 	RawData   []byte
@@ -100,7 +103,7 @@ func (s *tcpStream) processPackets() {
 
 // handlePacket 处理解析后的数据包
 func handlePacket(pkt *PacketData, direction string) {
-	// 获取 Proto 名称
+	// 获取 Proto 名称（使用 MsgID 查找）
 	protoName := GetProtoNameById(pkt.MsgID)
 	if protoName == "" {
 		protoName = fmt.Sprintf("Unknown_%d", pkt.MsgID)
@@ -123,6 +126,8 @@ func handlePacket(pkt *PacketData, direction string) {
 	packet := Packet{
 		Time:      time.Now(),
 		Direction: direction,
+		CmdType:   pkt.CmdType,
+		ParamType: pkt.ParamType,
 		MsgID:     pkt.MsgID,
 		Name:      protoName,
 		Data:      parsedData,
@@ -155,7 +160,9 @@ func logPacket(pkt *Packet) {
 	}
 
 	timestamp := pkt.Time.Format("15:04:05.000")
-	dirColor.Printf("[%s] %s [%d] %s\n", timestamp, arrow, pkt.MsgID, pkt.Name)
+	// 显示格式: [时间] 方向 [CmdType=X, Param=Y, MsgID=Z] 消息名称
+	dirColor.Printf("[%s] %s [Cmd=%d, Param=%d, MsgID=%d] %s\n",
+		timestamp, arrow, pkt.CmdType, pkt.ParamType, pkt.MsgID, pkt.Name)
 
 	// 如果有解析的数据，打印 JSON
 	if pkt.Data != nil {

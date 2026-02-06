@@ -109,6 +109,11 @@
             color: #f9ed69;
             font-weight: bold;
         }
+        .packet-item .cmd-type {
+            color: #ff9f43;
+            font-size: 11px;
+            margin-left: 5px;
+        }
         .packet-item .msg-name {
             color: #4ecca3;
             margin-left: 10px;
@@ -225,7 +230,7 @@
     </div>
 
     <div class="filter-bar">
-        <input type="text" id="filterInput" placeholder="过滤: 输入 MsgID 或消息名称...">
+        <input type="text" id="filterInput" placeholder="过滤: 输入 MsgID、CmdType、ParamType 或消息名称...">
     </div>
 
     <div class="status-bar">
@@ -386,6 +391,8 @@
             const filtered = packets.filter(p => {
                 if (!filter) return true;
                 return p.msgId.toString().includes(filter) ||
+                       p.cmdType.toString().includes(filter) ||
+                       p.paramType.toString().includes(filter) ||
                        (p.name && p.name.toLowerCase().includes(filter));
             });
 
@@ -397,6 +404,7 @@
                         <span class="time">${p.time}</span>
                         <span class="direction ${p.direction.toLowerCase()}">${p.direction}</span>
                         <span class="msg-id">${p.msgId}</span>
+                        <span class="cmd-type">[Cmd=${p.cmdType}, Param=${p.paramType}]</span>
                         <span class="msg-name">${p.name || 'Unknown'}</span>
                     </div>
                 </div>
@@ -436,6 +444,8 @@
                     <div class="detail-content">
                         <p><strong>时间:</strong> ${packet.time}</p>
                         <p><strong>方向:</strong> ${packet.direction}</p>
+                        <p><strong>CmdType:</strong> ${packet.cmdType}</p>
+                        <p><strong>ParamType:</strong> ${packet.paramType}</p>
                         <p><strong>MsgID:</strong> ${packet.msgId}</p>
                         <p><strong>名称:</strong> ${packet.name || 'Unknown'}</p>
                     </div>

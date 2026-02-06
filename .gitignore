@@ -1,0 +1,4 @@
+*.pcap
+/data
+*.exe
+*.py
